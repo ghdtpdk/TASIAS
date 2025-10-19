@@ -9,11 +9,18 @@
     <style>
         /* Inter 폰트 사용 */
         body { font-family: 'Inter', sans-serif; }
-        /* 텍스트 표를 복사하기 쉽도록 고정 폭 폰트 적용 */
-        #textReportOutput { font-family: 'Courier New', monospace; white-space: pre; }
+        /* 텍스트 표를 복사하기 쉽도록 고정 폭 폰트 적용 및 줄 바꿈 방지 */
+        #textReportOutput { 
+            font-family: 'Courier New', monospace; 
+            white-space: pre; 
+            /* 가로 스크롤 허용 */
+            overflow-x: auto; 
+            /* 중요: 이 영역에서는 시각적 정렬이 깨져 보입니다. 
+               이는 데이터 시트 붙여넣기를 위한 최적화 때문입니다.
+            */
+        }
         .input-cell { 
             /* 텍스트 크기를 더 작게(text-xs), 좌우 패딩을 줄여 셀 폭에 맞춥니다. */
-            /* input-cell은 부모 셀의 좁은 w-[50px] 공간을 w-full로 채웁니다. */
             @apply px-0.5 py-1 text-xs rounded-md border border-gray-300 focus:ring-blue-500 focus:border-blue-500 w-full text-center;
         }
     </style>
@@ -148,7 +155,7 @@
             return tas_knots * Math.sqrt(sigma);
         }
 
-        // --- 동적 테이블 관리 로직 ---
+        // --- 동적 테이블 관리 로직 (변화 없음) ---
 
         /**
          * 입력 테이블에 새 행을 추가합니다.
@@ -229,10 +236,12 @@
         }
 
 
-        // --- 일괄 처리 및 출력 로직 (변화 없음) ---
+        // --- 일괄 처리 및 출력 로직 (순수 탭 문자열 기반의 데이터 구조 사용) ---
 
         /**
          * 파싱된 데이터를 기반으로 계산을 수행하고 텍스트 보고서를 생성합니다.
+         * 이 함수는 사용자 요청에 따라 명시적인 탭과 파이프 조합을 구분자로 사용하여
+         * 데이터 시트에 최적화된 구조를 생성합니다.
          * @param {{alt: number, tas: number}[]} dataArray - 파싱된 데이터
          * @returns {string} 복사 가능한 텍스트 표
          */
@@ -242,22 +251,20 @@
             }
 
             let report = "";
-            const COLUMN_WIDTH_ALT = 20; // 고도 열 너비
-            const COLUMN_WIDTH_TAS = 20; // TAS 열 너비
-            const COLUMN_WIDTH_IAS = 20; // IAS 열 너비
-            const SEPARATOR = ' | ';
             
             // 헤더 정의
-            const headerAlt = '고도 hstart (m)'.padEnd(COLUMN_WIDTH_ALT);
-            const headerTAS = 'TAS (km/h)'.padEnd(COLUMN_WIDTH_TAS);
-            const headerIAS = 'IAS (km/h)'.padEnd(COLUMN_WIDTH_IAS);
+            const headerType = '출력 기준';
+            const headerAlt = '시작 고도 hstart (m)'; 
+            const headerTAS = 'TAS (km/h)';
+            const headerIAS = 'IAS (km/h)';
 
-            report += headerAlt + SEPARATOR + headerTAS + SEPARATOR + headerIAS + '\n';
-            
-            // 구분선
-            report += '-'.repeat(COLUMN_WIDTH_ALT) + SEPARATOR + '-'.repeat(COLUMN_WIDTH_TAS) + SEPARATOR + '-'.repeat(COLUMN_WIDTH_IAS) + '\n';
+            // 1. Header Line: [값] + \t| + [다음 값]
+            report += headerType + '\t| ' + 
+                      headerAlt + '\t| ' + 
+                      headerTAS + '\t| ' + 
+                      headerIAS + '\n';
 
-            // 데이터 행 생성
+            // 2. Data Rows: 명시적인 탭 조합 사용
             for (const item of dataArray) {
                 const tas_kmh = item.tas;
                 const alt_m = item.alt;
@@ -271,20 +278,38 @@
                 // 3. IAS (Kt) -> IAS (km/h) 변환
                 const ias_kmh = ias_knots * KNOTS_TO_KMH;
                 
-                // 텍스트 행 포맷팅
-                // 숫자는 오른쪽 정렬 (right align)
-                const altStr = alt_m.toFixed(0).padStart(COLUMN_WIDTH_ALT);
-                const tasStr = tas_kmh.toFixed(1).padStart(COLUMN_WIDTH_TAS);
-                const iasStr = ias_kmh.toFixed(2).padStart(COLUMN_WIDTH_IAS);
+                // 데이터 문자열 변환 (패딩 없이)
+                const typeStr = ""; // 출력 기준
+                const altStr = alt_m.toFixed(0); 
+                const tasStr = tas_kmh.toFixed(1); 
+                const iasStr = ias_kmh.toFixed(2); 
+                
+                // --- 사용자 요청에 따른 조건부 탭 삽입 로직 ---
+                let altToTasSeparator;
+                if (alt_m < 1000) {
+                    // 고도가 세 자리수 이하일 때: 탭 4개
+                    altToTasSeparator = '\t\t\t\t| ';
+                } else {
+                    // 고도가 네 자리수 이상일 때: 탭 3개
+                    altToTasSeparator = '\t\t\t| ';
+                }
+                
+                /*
+                사용자 요청 구조:
+                [출력 기준] + \t\t|  + [시작 고도] + [조건부 탭] + \t|  + [TAS] + \t\t|  + [IAS]
+                */
 
-                report += altStr + SEPARATOR + tasStr + SEPARATOR + iasStr + '\n';
+                report += typeStr + '\t\t| ' + // [출력 기준] + \t\t| 
+                          altStr + altToTasSeparator + // [시작 고도] + (조건부 탭 + 파이프 + 공백)
+                          tasStr + '\t\t| ' + // [TAS] + \t\t| 
+                          iasStr + '\n'; // [IAS] + \n
             }
 
             return report;
         }
 
 
-        // --- 이벤트 리스너 설정 ---
+        // --- 이벤트 리스너 설정 (변화 없음) ---
         
         // 데이터 행 추가 버튼
         addRowButton.addEventListener('click', () => {
