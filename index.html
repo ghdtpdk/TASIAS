@@ -13,21 +13,18 @@
         #textReportOutput { 
             font-family: 'Courier New', monospace; 
             white-space: pre; 
-            /* 가로 스크롤 허용 */
-            overflow-x: auto; 
-            /* 중요: 이 영역에서는 시각적 정렬이 깨져 보입니다. 
-               이는 데이터 시트 붙여넣기를 위한 최적화 때문입니다.
-            */
         }
         .input-cell { 
             /* 텍스트 크기를 더 작게(text-xs), 좌우 패딩을 줄여 셀 폭에 맞춥니다. */
-            @apply px-0.5 py-1 text-xs rounded-md border border-gray-300 focus:ring-blue-500 focus:border-blue-500 w-full text-center;
+            /* w-full은 아래 addRow 함수에서 명시적으로 추가하여 CSS 적용 문제를 방지합니다. */
+            @apply px-0.5 py-1 text-xs rounded-md border border-gray-300 focus:ring-blue-500 focus:border-blue-500 text-center;
         }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen p-4 sm:p-8">
 
-    <div class="max-w-4xl mx-auto">
+    <!-- max-w-6xl로 넓게 유지 -->
+    <div class="max-w-6xl mx-auto">
         
         <!-- Header -->
         <header class="text-center py-6 mb-8 bg-blue-600 text-white rounded-xl shadow-lg">
@@ -35,6 +32,7 @@
             <p class="mt-2 text-blue-200">테이블에 고도와 속도를 입력하여 텍스트 표로 정리합니다.</p>
         </header>
 
+        <!-- md:grid-cols-2는 유지하여 좌우 배치합니다. (50:50) -->
         <div class="grid md:grid-cols-2 gap-8">
             
             <!-- Input Panel -->
@@ -44,15 +42,15 @@
                 <!-- Input Table Container -->
                 <div class="overflow-x-auto">
                     <!-- table-fixed 클래스로 너비 강제 고정 -->
-                    <table class="min-w-full divide-y divide-gray-200 table-fixed">
+                    <table class="min-w-full max-w-[500px] divide-y divide-gray-200 table-fixed">
                         <thead class="bg-gray-50">
                             <tr>
-                                <!-- 폭을 w-[50px]로 극단적으로 축소하고, px-0으로 패딩 제거 -->
-                                <th class="px-0 py-1 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-[50px]">고도 (m)</th>
-                                <!-- 폭을 w-[50px]로 극단적으로 축소하고, px-0으로 패딩 제거 -->
-                                <th class="px-0 py-1 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-[50px]">TAS (km/h)</th>
-                                <!-- 삭제 버튼 영역의 폭은 유지 -->
-                                <th class="px-1 py-1 w-1/4"></th>
+                                <!-- 고도 (m) 열 너비: 40% -->
+                                <th class="py-1 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-[40%]">고도 (m)</th>
+                                <!-- TAS (km/h) 열 너비: 40% -->
+                                <th class="py-1 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-[40%]">TAS (km/h)</th>
+                                <!-- 삭제 버튼 영역의 폭 20% -->
+                                <th class="px-1 py-1 w-[20%]"></th>
                             </tr>
                         </thead>
                         <tbody id="inputTableBody" class="bg-white divide-y divide-gray-200">
@@ -155,7 +153,7 @@
             return tas_knots * Math.sqrt(sigma);
         }
 
-        // --- 동적 테이블 관리 로직 (변화 없음) ---
+        // --- 동적 테이블 관리 로직 (w-full 명시적 추가) ---
 
         /**
          * 입력 테이블에 새 행을 추가합니다.
@@ -167,15 +165,17 @@
             
             // 고도 입력 셀
             const altCell = newRow.insertCell();
-            // px-0을 사용하여 셀 내부 가로 패딩 제거
-            altCell.className = "py-1 px-0";
-            altCell.innerHTML = `<input type="number" value="${alt}" min="0" step="1" class="input-cell alt-input">`;
+            // 부모 셀에 여백 확보
+            altCell.className = "py-1 px-1"; 
+            // Input에 w-full 명시적 추가
+            altCell.innerHTML = `<input type="number" value="${alt}" min="0" step="1" class="input-cell alt-input w-full">`;
 
             // TAS 입력 셀
             const tasCell = newRow.insertCell();
-            // px-0을 사용하여 셀 내부 가로 패딩 제거
-            tasCell.className = "py-1 px-0";
-            tasCell.innerHTML = `<input type="number" value="${tas}" min="0" step="0.1" class="input-cell tas-input">`;
+            // 부모 셀에 여백 확보
+            tasCell.className = "py-1 px-1";
+            // Input에 w-full 명시적 추가 (수정된 부분)
+            tasCell.innerHTML = `<input type="number" value="${tas}" min="0" step="0.1" class="input-cell tas-input w-full">`;
 
             // 삭제 버튼 셀
             const deleteCell = newRow.insertCell();
