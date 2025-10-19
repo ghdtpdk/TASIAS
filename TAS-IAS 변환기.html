@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TAS ➡ IAS 일괄 변환기</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Inter 폰트 사용 */
+        body { font-family: 'Inter', sans-serif; }
+        /* 텍스트 표를 복사하기 쉽도록 고정 폭 폰트 적용 */
+        #textReportOutput { font-family: 'Courier New', monospace; white-space: pre; }
+        .input-cell { 
+            /* 텍스트 크기를 더 작게(text-xs), 좌우 패딩을 줄여 셀 폭에 맞춥니다. */
+            /* input-cell은 부모 셀의 좁은 w-[50px] 공간을 w-full로 채웁니다. */
+            @apply px-0.5 py-1 text-xs rounded-md border border-gray-300 focus:ring-blue-500 focus:border-blue-500 w-full text-center;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 sm:p-8">
+
+    <div class="max-w-4xl mx-auto">
+        
+        <!-- Header -->
+        <header class="text-center py-6 mb-8 bg-blue-600 text-white rounded-xl shadow-lg">
+            <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">TAS ➡️ IAS 일괄 변환기</h1>
+            <p class="mt-2 text-blue-200">테이블에 고도와 속도를 입력하여 텍스트 표로 정리합니다.</p>
+        </header>
+
+        <div class="grid md:grid-cols-2 gap-8">
+            
+            <!-- Input Panel -->
+            <div class="bg-white p-6 rounded-xl shadow-xl space-y-6">
+                <h2 class="text-xl font-semibold text-gray-800 border-b pb-3 mb-4">1. 데이터 입력</h2>
+                
+                <!-- Input Table Container -->
+                <div class="overflow-x-auto">
+                    <!-- table-fixed 클래스로 너비 강제 고정 -->
+                    <table class="min-w-full divide-y divide-gray-200 table-fixed">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <!-- 폭을 w-[50px]로 극단적으로 축소하고, px-0으로 패딩 제거 -->
+                                <th class="px-0 py-1 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-[50px]">고도 (m)</th>
+                                <!-- 폭을 w-[50px]로 극단적으로 축소하고, px-0으로 패딩 제거 -->
+                                <th class="px-0 py-1 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-[50px]">TAS (km/h)</th>
+                                <!-- 삭제 버튼 영역의 폭은 유지 -->
+                                <th class="px-1 py-1 w-1/4"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="inputTableBody" class="bg-white divide-y divide-gray-200">
+                            <!-- Rows will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Add Row Button -->
+                <button id="addRowButton"
+                        class="w-full flex justify-center items-center py-2 px-4 border border-blue-300 rounded-lg shadow-sm text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 transition duration-150 ease-in-out">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+                    </svg>
+                    데이터 행 추가
+                </button>
+
+                <!-- Convert Button -->
+                <button id="convertButton"
+                        class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-xl font-medium text-white bg-green-500 hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out mt-6">
+                    일괄 변환 및 텍스트 표 생성
+                </button>
+            </div>
+
+            <!-- Result Panel -->
+            <div class="bg-white p-6 rounded-xl shadow-xl">
+                <h2 class="text-xl font-semibold text-gray-800 border-b pb-3 mb-4">2. 텍스트 표 결과 (복사 가능)</h2>
+                
+                <div id="resultOutput" class="min-h-[300px] bg-gray-100 p-4 rounded-lg overflow-auto shadow-inner">
+                    <pre id="textReportOutput" class="text-sm text-gray-800">여기에 변환된 텍스트 표가 나타납니다. (고정 폭 폰트)</pre>
+                </div>
+
+                <button id="copyButton"
+                        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-lg text-sm font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out mt-4"
+                        disabled>
+                    결과 복사하기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 상수 및 단위 변환 ---
+        // 제공된 C++ 코드의 상수들을 JavaScript 상수로 변환합니다.
+        const STD_RO0 = 1.225;     // Standard density [kg/m3]
+        const STD_P0 = 101300.0;   // Standard pressure at sea level, Pa
+        const STD_T0 = 288.16;     // Standard temperature at sea level, K
+        const H_MAX = 18300.0;     // Maximal altitude in meters
+
+        // C++의 다항식 계수들
+        const DENSITY_COEFFS = [1.0, -9.59387e-05, 3.53118e-09, -5.83556e-14, 2.28719e-19];
+        const PRESSURE_COEFFS = [1.0, -0.000118441, 5.6763e-09, -1.3738e-13, 1.60373e-18];
+        const TEMPERATURE_COEFFS = [1.0, -2.27712e-05, 2.18069e-10, -5.71104e-14, 3.97306e-18];
+
+        // 속도 단위 변환 상수
+        const KMH_TO_KNOTS = 1 / 1.852; // 1 km/h = 1/1.852 knots
+        const KNOTS_TO_KMH = 1.852;     // 1 knot = 1.852 km/h
+
+        // 기본 데이터 설정 (이전 요청에서 사용자가 제공한 값)
+        const DEFAULT_DATA = [
+            { alt: 0, tas: 220 },
+            { alt: 1151, tas: 230 },
+            { alt: 1801, tas: 240 },
+            { alt: 4251, tas: 250 },
+            { alt: 4951, tas: 260 },
+            { alt: 5651, tas: 270 },
+            { alt: 7451, tas: 280 },
+            { alt: 8500, tas: 290 },
+            { alt: 9701, tas: 300 },
+        ];
+        
+        // --- DOM 요소 참조 ---
+        const inputTableBody = document.getElementById('inputTableBody');
+        const addRowButton = document.getElementById('addRowButton');
+        const convertButton = document.getElementById('convertButton');
+        const textReportOutput = document.getElementById('textReportOutput');
+        const copyButton = document.getElementById('copyButton');
+
+
+        // --- 대기 모델 및 변환 로직 (변화 없음) ---
+        function poly(tab, v) {
+            return tab[0] + v * (tab[1] + v * (tab[2] + v * (tab[3] + v * tab[4])));
+        }
+
+        function getDensity(h) {
+            const h_clamped = Math.min(h, H_MAX);
+            const ratio_term = H_MAX / Math.max(H_MAX, h);
+            return STD_RO0 * poly(DENSITY_COEFFS, h_clamped) * ratio_term;
+        }
+
+        /**
+         * TAS (Knots)를 IAS (Knots)로 변환합니다.
+         * @param {number} tas_knots - 진대기 속도 (Kt)
+         * @param {number} h_meters - 고도 (m)
+         * @returns {number} IAS (Kt)
+         */
+        function tasToIas_knots(tas_knots, h_meters) {
+            const rho = getDensity(h_meters);
+            const sigma = rho / STD_RO0; // 밀도비
+            return tas_knots * Math.sqrt(sigma);
+        }
+
+        // --- 동적 테이블 관리 로직 ---
+
+        /**
+         * 입력 테이블에 새 행을 추가합니다.
+         * @param {number} alt - 고도 기본값
+         * @param {number} tas - TAS 기본값
+         */
+        function addRow(alt = 0, tas = 0) {
+            const newRow = inputTableBody.insertRow();
+            
+            // 고도 입력 셀
+            const altCell = newRow.insertCell();
+            // px-0을 사용하여 셀 내부 가로 패딩 제거
+            altCell.className = "py-1 px-0";
+            altCell.innerHTML = `<input type="number" value="${alt}" min="0" step="1" class="input-cell alt-input">`;
+
+            // TAS 입력 셀
+            const tasCell = newRow.insertCell();
+            // px-0을 사용하여 셀 내부 가로 패딩 제거
+            tasCell.className = "py-1 px-0";
+            tasCell.innerHTML = `<input type="number" value="${tas}" min="0" step="0.1" class="input-cell tas-input">`;
+
+            // 삭제 버튼 셀
+            const deleteCell = newRow.insertCell();
+            deleteCell.className = "px-1 py-1 text-center";
+            deleteCell.innerHTML = `
+                <button type="button" 
+                        class="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100 transition duration-150"
+                        onclick="deleteRow(this)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 10-2 0v6a1 1 0 102 0V8z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+            `;
+        }
+        
+        /**
+         * 행 삭제 (글로벌 함수로 DOM에서 직접 호출)
+         * @param {HTMLElement} button - 클릭된 삭제 버튼
+         */
+        window.deleteRow = function(button) {
+            const row = button.closest('tr');
+            if (inputTableBody.rows.length > 1) { // 최소 한 줄은 남겨둡니다.
+                row.remove();
+                convertButton.click(); // 삭제 후 즉시 재계산
+            } else {
+                 // 행이 하나만 남았을 경우, 값을 0으로 초기화
+                 const altInput = row.querySelector('.alt-input');
+                 const tasInput = row.querySelector('.tas-input');
+                 if (altInput && tasInput) {
+                     altInput.value = 0;
+                     tasInput.value = 0;
+                     convertButton.click(); // 초기화 후 재계산
+                 }
+            }
+        }
+
+        /**
+         * 테이블에서 모든 유효한 고도와 TAS 값을 읽어옵니다.
+         * @returns {{alt: number, tas: number}[]}
+         */
+        function readTableInput() {
+            const data = [];
+            const rows = inputTableBody.querySelectorAll('tr');
+
+            rows.forEach(row => {
+                const altInput = row.querySelector('.alt-input');
+                const tasInput = row.querySelector('.tas-input');
+                
+                const alt_m = parseFloat(altInput.value);
+                const tas_kmh = parseFloat(tasInput.value);
+                
+                // 유효한 숫자인지 확인하고 0 이상인지 검사
+                if (!isNaN(alt_m) && alt_m >= 0 && !isNaN(tas_kmh) && tas_kmh >= 0) {
+                    data.push({ alt: alt_m, tas: tas_kmh });
+                }
+            });
+            return data;
+        }
+
+
+        // --- 일괄 처리 및 출력 로직 (변화 없음) ---
+
+        /**
+         * 파싱된 데이터를 기반으로 계산을 수행하고 텍스트 보고서를 생성합니다.
+         * @param {{alt: number, tas: number}[]} dataArray - 파싱된 데이터
+         * @returns {string} 복사 가능한 텍스트 표
+         */
+        function generateTextReport(dataArray) {
+            if (dataArray.length === 0) {
+                return "처리할 유효한 데이터가 없습니다. 입력 테이블을 확인해 주세요.";
+            }
+
+            let report = "";
+            const COLUMN_WIDTH_ALT = 20; // 고도 열 너비
+            const COLUMN_WIDTH_TAS = 20; // TAS 열 너비
+            const COLUMN_WIDTH_IAS = 20; // IAS 열 너비
+            const SEPARATOR = ' | ';
+            
+            // 헤더 정의
+            const headerAlt = '고도 hstart (m)'.padEnd(COLUMN_WIDTH_ALT);
+            const headerTAS = 'TAS (km/h)'.padEnd(COLUMN_WIDTH_TAS);
+            const headerIAS = 'IAS (km/h)'.padEnd(COLUMN_WIDTH_IAS);
+
+            report += headerAlt + SEPARATOR + headerTAS + SEPARATOR + headerIAS + '\n';
+            
+            // 구분선
+            report += '-'.repeat(COLUMN_WIDTH_ALT) + SEPARATOR + '-'.repeat(COLUMN_WIDTH_TAS) + SEPARATOR + '-'.repeat(COLUMN_WIDTH_IAS) + '\n';
+
+            // 데이터 행 생성
+            for (const item of dataArray) {
+                const tas_kmh = item.tas;
+                const alt_m = item.alt;
+
+                // 1. TAS (km/h) -> TAS (Kt) 변환
+                const tas_knots = tas_kmh * KMH_TO_KNOTS;
+                
+                // 2. IAS (Kt) 계산
+                const ias_knots = tasToIas_knots(tas_knots, alt_m);
+
+                // 3. IAS (Kt) -> IAS (km/h) 변환
+                const ias_kmh = ias_knots * KNOTS_TO_KMH;
+                
+                // 텍스트 행 포맷팅
+                // 숫자는 오른쪽 정렬 (right align)
+                const altStr = alt_m.toFixed(0).padStart(COLUMN_WIDTH_ALT);
+                const tasStr = tas_kmh.toFixed(1).padStart(COLUMN_WIDTH_TAS);
+                const iasStr = ias_kmh.toFixed(2).padStart(COLUMN_WIDTH_IAS);
+
+                report += altStr + SEPARATOR + tasStr + SEPARATOR + iasStr + '\n';
+            }
+
+            return report;
+        }
+
+
+        // --- 이벤트 리스너 설정 ---
+        
+        // 데이터 행 추가 버튼
+        addRowButton.addEventListener('click', () => {
+            addRow(0, 0); // 기본값 0으로 새 행 추가
+        });
+
+        // 변환 버튼 클릭 시
+        convertButton.addEventListener('click', () => {
+            const dataArray = readTableInput();
+            const report = generateTextReport(dataArray);
+            
+            textReportOutput.textContent = report;
+            
+            // 복사 버튼 활성화/비활성화
+            copyButton.disabled = dataArray.length === 0;
+        });
+
+        // 결과 복사 기능
+        copyButton.addEventListener('click', () => {
+            const textToCopy = textReportOutput.textContent;
+            
+            // document.execCommand('copy')를 사용합니다.
+            const tempTextarea = document.createElement('textarea');
+            tempTextarea.value = textToCopy;
+            document.body.appendChild(tempTextarea);
+            tempTextarea.select();
+            
+            try {
+                document.execCommand('copy');
+                copyButton.textContent = '✅ 복사 완료!';
+            } catch (err) {
+                console.error('복사 실패:', err);
+                copyButton.textContent = '❌ 복사 실패';
+            }
+            
+            document.body.removeChild(tempTextarea);
+            
+            // 2초 후 버튼 텍스트 원래대로 복원
+            setTimeout(() => {
+                copyButton.textContent = '결과 복사하기';
+            }, 2000);
+        });
+
+        // 페이지 로드 시 초기 테이블 생성 및 변환 실행
+        window.addEventListener('load', () => {
+            // 기본 데이터로 테이블 초기화
+            if (DEFAULT_DATA.length === 0) {
+                 addRow(0, 0);
+            } else {
+                DEFAULT_DATA.forEach(data => addRow(data.alt, data.tas));
+            }
+            convertButton.click();
+        });
+
+    </script>
+</body>
+</html>
