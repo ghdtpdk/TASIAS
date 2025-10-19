@@ -304,7 +304,8 @@
                 const typeStr = ""; 
                 const altStr = alt_m.toFixed(0); 
                 const tasStr = tas_kmh.toFixed(1); 
-                const iasStr = ias_kmh.toFixed(2); 
+                // 변경된 부분: IAS 결과값을 소수점 첫째 자리로 설정
+                const iasStr = ias_kmh.toFixed(1); 
 
                 if (format === 'fixed_tab') {
                     // 사용자 요청에 따른 조건부 탭 삽입 로직 (변화 없음)
