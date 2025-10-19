@@ -10,6 +10,7 @@
         /* Inter 폰트 사용 */
         body { font-family: 'Inter', sans-serif; }
         /* 텍스트 표를 복사하기 쉽도록 고정 폭 폰트 적용 및 줄 바꿈 방지 */
+        /* 모든 출력에서 white-space: pre; 를 유지하여 줄바꿈(\r\n)이 항상 보존되도록 강제합니다. */
         #textReportOutput { 
             font-family: 'Courier New', monospace; 
             white-space: pre; 
@@ -79,6 +80,18 @@
             <div class="bg-white p-6 rounded-xl shadow-xl">
                 <h2 class="text-xl font-semibold text-gray-800 border-b pb-3 mb-4">2. 텍스트 표 결과 (복사 가능)</h2>
                 
+                <!-- 출력 양식 선택 기능 추가 -->
+                <div class="mb-4">
+                    <label for="outputFormat" class="block text-sm font-medium text-gray-700 mb-1">출력 양식 선택:</label>
+                    <select id="outputFormat" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        <option value="fixed_tab">고정 폭 탭 (시각적 정렬)</option>
+                        <option value="tsv">탭 구분 (TSV)</option>
+                        <option value="csv">쉼표 구분 (CSV)</option>
+                        <option value="pipe">파이프 구분 (|)</option>
+                    </select>
+                </div>
+                <!-- /출력 양식 선택 -->
+
                 <div id="resultOutput" class="min-h-[300px] bg-gray-100 p-4 rounded-lg overflow-auto shadow-inner">
                     <pre id="textReportOutput" class="text-sm text-gray-800">여기에 변환된 텍스트 표가 나타납니다. (고정 폭 폰트)</pre>
                 </div>
@@ -94,22 +107,18 @@
 
     <script>
         // --- 상수 및 단위 변환 ---
-        // 제공된 C++ 코드의 상수들을 JavaScript 상수로 변환합니다.
         const STD_RO0 = 1.225;     // Standard density [kg/m3]
         const STD_P0 = 101300.0;   // Standard pressure at sea level, Pa
         const STD_T0 = 288.16;     // Standard temperature at sea level, K
         const H_MAX = 18300.0;     // Maximal altitude in meters
 
-        // C++의 다항식 계수들
         const DENSITY_COEFFS = [1.0, -9.59387e-05, 3.53118e-09, -5.83556e-14, 2.28719e-19];
         const PRESSURE_COEFFS = [1.0, -0.000118441, 5.6763e-09, -1.3738e-13, 1.60373e-18];
         const TEMPERATURE_COEFFS = [1.0, -2.27712e-05, 2.18069e-10, -5.71104e-14, 3.97306e-18];
 
-        // 속도 단위 변환 상수
-        const KMH_TO_KNOTS = 1 / 1.852; // 1 km/h = 1/1.852 knots
-        const KNOTS_TO_KMH = 1.852;     // 1 knot = 1.852 km/h
+        const KMH_TO_KNOTS = 1 / 1.852; 
+        const KNOTS_TO_KMH = 1.852;     
 
-        // 기본 데이터 설정 (이전 요청에서 사용자가 제공한 값)
         const DEFAULT_DATA = [
             { alt: 0, tas: 220 },
             { alt: 1151, tas: 230 },
@@ -128,6 +137,7 @@
         const convertButton = document.getElementById('convertButton');
         const textReportOutput = document.getElementById('textReportOutput');
         const copyButton = document.getElementById('copyButton');
+        const outputFormatSelector = document.getElementById('outputFormat');
 
 
         // --- 대기 모델 및 변환 로직 (변화 없음) ---
@@ -143,9 +153,6 @@
 
         /**
          * TAS (Knots)를 IAS (Knots)로 변환합니다.
-         * @param {number} tas_knots - 진대기 속도 (Kt)
-         * @param {number} h_meters - 고도 (m)
-         * @returns {number} IAS (Kt)
          */
         function tasToIas_knots(tas_knots, h_meters) {
             const rho = getDensity(h_meters);
@@ -153,28 +160,22 @@
             return tas_knots * Math.sqrt(sigma);
         }
 
-        // --- 동적 테이블 관리 로직 (w-full 명시적 추가) ---
+        // --- 동적 테이블 관리 로직 ---
 
         /**
          * 입력 테이블에 새 행을 추가합니다.
-         * @param {number} alt - 고도 기본값
-         * @param {number} tas - TAS 기본값
          */
         function addRow(alt = 0, tas = 0) {
             const newRow = inputTableBody.insertRow();
             
             // 고도 입력 셀
             const altCell = newRow.insertCell();
-            // 부모 셀에 여백 확보
             altCell.className = "py-1 px-1"; 
-            // Input에 w-full 명시적 추가
             altCell.innerHTML = `<input type="number" value="${alt}" min="0" step="1" class="input-cell alt-input w-full">`;
 
             // TAS 입력 셀
             const tasCell = newRow.insertCell();
-            // 부모 셀에 여백 확보
             tasCell.className = "py-1 px-1";
-            // Input에 w-full 명시적 추가 (수정된 부분)
             tasCell.innerHTML = `<input type="number" value="${tas}" min="0" step="0.1" class="input-cell tas-input w-full">`;
 
             // 삭제 버튼 셀
@@ -193,28 +194,25 @@
         
         /**
          * 행 삭제 (글로벌 함수로 DOM에서 직접 호출)
-         * @param {HTMLElement} button - 클릭된 삭제 버튼
          */
         window.deleteRow = function(button) {
             const row = button.closest('tr');
-            if (inputTableBody.rows.length > 1) { // 최소 한 줄은 남겨둡니다.
+            if (inputTableBody.rows.length > 1) { 
                 row.remove();
-                convertButton.click(); // 삭제 후 즉시 재계산
+                convertButton.click(); 
             } else {
-                 // 행이 하나만 남았을 경우, 값을 0으로 초기화
                  const altInput = row.querySelector('.alt-input');
                  const tasInput = row.querySelector('.tas-input');
                  if (altInput && tasInput) {
                      altInput.value = 0;
                      tasInput.value = 0;
-                     convertButton.click(); // 초기화 후 재계산
+                     convertButton.click(); 
                  }
             }
         }
 
         /**
          * 테이블에서 모든 유효한 고도와 TAS 값을 읽어옵니다.
-         * @returns {{alt: number, tas: number}[]}
          */
         function readTableInput() {
             const data = [];
@@ -227,7 +225,6 @@
                 const alt_m = parseFloat(altInput.value);
                 const tas_kmh = parseFloat(tasInput.value);
                 
-                // 유효한 숫자인지 확인하고 0 이상인지 검사
                 if (!isNaN(alt_m) && alt_m >= 0 && !isNaN(tas_kmh) && tas_kmh >= 0) {
                     data.push({ alt: alt_m, tas: tas_kmh });
                 }
@@ -236,16 +233,15 @@
         }
 
 
-        // --- 일괄 처리 및 출력 로직 (순수 탭 문자열 기반의 데이터 구조 사용) ---
+        // --- 일괄 처리 및 출력 로직 ---
 
         /**
          * 파싱된 데이터를 기반으로 계산을 수행하고 텍스트 보고서를 생성합니다.
-         * 이 함수는 사용자 요청에 따라 명시적인 탭과 파이프 조합을 구분자로 사용하여
-         * 데이터 시트에 최적화된 구조를 생성합니다.
          * @param {{alt: number, tas: number}[]} dataArray - 파싱된 데이터
+         * @param {string} format - 출력 포맷 ('fixed_tab', 'tsv', 'csv', 'pipe')
          * @returns {string} 복사 가능한 텍스트 표
          */
-        function generateTextReport(dataArray) {
+        function generateTextReport(dataArray, format) {
             if (dataArray.length === 0) {
                 return "처리할 유효한 데이터가 없습니다. 입력 테이블을 확인해 주세요.";
             }
@@ -258,82 +254,110 @@
             const headerTAS = 'TAS (km/h)';
             const headerIAS = 'IAS (km/h)';
 
-            // 1. Header Line: [값] + \t| + [다음 값]
-            report += headerType + '\t| ' + 
-                      headerAlt + '\t| ' + 
-                      headerTAS + '\t| ' + 
-                      headerIAS + '\n';
+            // 구분자 설정
+            let separator;
+            let headerSeparator;
+            
+            // 핵심 수정: CR+LF를 사용하여 스프레드시트 복사/붙여넣기 호환성 최대화
+            const NEWLINE = '\r\n'; 
 
-            // 2. Data Rows: 명시적인 탭 조합 사용
+            switch (format) {
+                case 'tsv': 
+                    separator = '\t';
+                    headerSeparator = separator;
+                    break;
+                case 'csv':
+                    separator = ',';
+                    headerSeparator = separator;
+                    break;
+                case 'pipe':
+                    separator = ' | ';
+                    headerSeparator = separator;
+                    break;
+                case 'fixed_tab':
+                default:
+                    separator = '\t';
+                    headerSeparator = '\t| ';
+                    break;
+            }
+
+            // 1. Header Line 생성
+            if (format !== 'fixed_tab') {
+                report += [headerType, headerAlt, headerTAS, headerIAS].join(headerSeparator) + NEWLINE;
+            } else {
+                report += headerType + '\t| ' + 
+                          headerAlt + '\t| ' + 
+                          headerTAS + '\t| ' + 
+                          headerIAS + NEWLINE;
+            }
+
+
+            // 2. Data Rows 생성
             for (const item of dataArray) {
                 const tas_kmh = item.tas;
                 const alt_m = item.alt;
 
-                // 1. TAS (km/h) -> TAS (Kt) 변환
                 const tas_knots = tas_kmh * KMH_TO_KNOTS;
-                
-                // 2. IAS (Kt) 계산
                 const ias_knots = tasToIas_knots(tas_knots, alt_m);
-
-                // 3. IAS (Kt) -> IAS (km/h) 변환
                 const ias_kmh = ias_knots * KNOTS_TO_KMH;
                 
-                // 데이터 문자열 변환 (패딩 없이)
-                const typeStr = ""; // 출력 기준
+                const typeStr = ""; 
                 const altStr = alt_m.toFixed(0); 
                 const tasStr = tas_kmh.toFixed(1); 
                 const iasStr = ias_kmh.toFixed(2); 
-                
-                // --- 사용자 요청에 따른 조건부 탭 삽입 로직 ---
-                let altToTasSeparator;
-                if (alt_m < 1000) {
-                    // 고도가 세 자리수 이하일 때: 탭 4개
-                    altToTasSeparator = '\t\t\t\t| ';
-                } else {
-                    // 고도가 네 자리수 이상일 때: 탭 3개
-                    altToTasSeparator = '\t\t\t| ';
-                }
-                
-                /*
-                사용자 요청 구조:
-                [출력 기준] + \t\t|  + [시작 고도] + [조건부 탭] + \t|  + [TAS] + \t\t|  + [IAS]
-                */
 
-                report += typeStr + '\t\t| ' + // [출력 기준] + \t\t| 
-                          altStr + altToTasSeparator + // [시작 고도] + (조건부 탭 + 파이프 + 공백)
-                          tasStr + '\t\t| ' + // [TAS] + \t\t| 
-                          iasStr + '\n'; // [IAS] + \n
+                if (format === 'fixed_tab') {
+                    // 사용자 요청에 따른 조건부 탭 삽입 로직 (변화 없음)
+                    let altToTasSeparator;
+                    if (alt_m < 1000) {
+                        altToTasSeparator = '\t\t\t\t| ';
+                    } else {
+                        altToTasSeparator = '\t\t\t| ';
+                    }
+                    
+                    report += typeStr + '\t\t| ' + 
+                              altStr + altToTasSeparator + 
+                              tasStr + '\t\t| ' + 
+                              iasStr + NEWLINE;
+                } else {
+                    // CSV, Pipe, TSV 형식
+                    report += [typeStr, altStr, tasStr, iasStr].join(separator) + NEWLINE;
+                }
             }
 
             return report;
         }
 
 
-        // --- 이벤트 리스너 설정 (변화 없음) ---
+        // --- 이벤트 리스너 설정 ---
         
         // 데이터 행 추가 버튼
         addRowButton.addEventListener('click', () => {
-            addRow(0, 0); // 기본값 0으로 새 행 추가
+            addRow(0, 0); 
         });
 
         // 변환 버튼 클릭 시
         convertButton.addEventListener('click', () => {
             const dataArray = readTableInput();
-            const report = generateTextReport(dataArray);
+            const selectedFormat = outputFormatSelector.value;
+            const report = generateTextReport(dataArray, selectedFormat); 
             
             textReportOutput.textContent = report;
             
             // 복사 버튼 활성화/비활성화
             copyButton.disabled = dataArray.length === 0;
+            
+            // 중요: 텍스트 출력이 어떤 형식(TSV, Fixed Tab)이든 상관없이
+            // white-space: pre; 스타일을 유지하여 줄 바꿈(\r\n)이 DOM에서 정확히 보존되도록 합니다.
+            // (이전 코드에서 이 부분을 토글하는 로직을 제거했습니다.)
         });
 
         // 결과 복사 기능
         copyButton.addEventListener('click', () => {
             const textToCopy = textReportOutput.textContent;
             
-            // document.execCommand('copy')를 사용합니다.
             const tempTextarea = document.createElement('textarea');
-            tempTextarea.value = textToCopy;
+            tempTextarea.value = textToCopy; 
             document.body.appendChild(tempTextarea);
             tempTextarea.select();
             
@@ -347,7 +371,6 @@
             
             document.body.removeChild(tempTextarea);
             
-            // 2초 후 버튼 텍스트 원래대로 복원
             setTimeout(() => {
                 copyButton.textContent = '결과 복사하기';
             }, 2000);
@@ -362,6 +385,11 @@
                 DEFAULT_DATA.forEach(data => addRow(data.alt, data.tas));
             }
             convertButton.click();
+            
+            // 출력 양식 변경 시 즉시 변환 실행
+            outputFormatSelector.addEventListener('change', () => {
+                convertButton.click();
+            });
         });
 
     </script>
